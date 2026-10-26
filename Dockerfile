@@ -23,5 +23,5 @@ ENV IDADIR=/opt/toolchain \
     IDA_MCP_STATE_DIR=/root/.idapro/mcp
 
 WORKDIR /workspace
-ENTRYPOINT ["/opt/mcp/entry", "pi"]
-CMD ["--help"]
+# No default CMD: with no arguments this starts an interactive pi session.
+ENTRYPOINT ["/opt/mcp/entry"]

@@ -15,8 +15,12 @@ first launch.
 ```bash
 msb run ghcr.io/skiyer/pi-re:latest --name pi-re -t \
   --mount-disk ~/images/toolchain-arm64.erofs:/opt/toolchain:ro,fstype=erofs \
-  --mount-dir  ~/work:/workspace
+  --mount-dir  ~/work:/workspace \
+  -- pi
 ```
+
+Pass `-- pi` (or nothing at all) to start an interactive session; anything after
+`pi` is forwarded to it, e.g. `-- pi -p "reverse /workspace/sample.bin"`.
 
 Then just ask:
 
@@ -55,6 +59,46 @@ The image architecture and the toolchain architecture must match
 `entry.sh` serves both roles: as the container entry point it prepares the
 environment and runs `pi`; as the command pi spawns for the MCP server it runs in
 stdio mode.
+
+## Use your own pi config
+
+Mount your models, credentials and settings so the container uses the same
+providers as your host. Mount the individual files rather than the whole
+`~/.pi/agent` directory, so the image's own MCP config stays in charge:
+
+```bash
+  --mount-file ~/.pi/agent/auth.json:/root/.pi/agent/auth.json \
+  --mount-file ~/.pi/agent/models.json:/root/.pi/agent/models.json \
+  --mount-file ~/.pi/agent/settings.json:/root/.pi/agent/settings.json
+```
+
+| File | Contents |
+|---|---|
+| `auth.json` | provider credentials |
+| `models.json` | custom providers and model definitions |
+| `settings.json` | default provider/model, extensions, tool settings |
+
+Full command:
+
+```bash
+msb run ghcr.io/skiyer/pi-re:latest --name pi-re -t \
+  --mount-disk ~/images/toolchain-arm64.erofs:/opt/toolchain:ro,fstype=erofs \
+  --mount-dir  ~/work:/workspace \
+  --mount-file ~/.pi/agent/auth.json:/root/.pi/agent/auth.json:ro \
+  --mount-file ~/.pi/agent/models.json:/root/.pi/agent/models.json:ro \
+  --mount-file ~/.pi/agent/settings.json:/root/.pi/agent/settings.json:ro \
+  -- pi
+```
+
+If you prefer to bring your *entire* pi setup, mount the directory instead —
+then your own `mcp.json` wins and the built-in one is not written:
+
+```bash
+  --mount-dir ~/.pi/agent:/root/.pi/agent
+```
+
+Sessions and caches live under `/root/.pi/agent`; mount the whole directory (not
+just files) if you want them to persist between runs.
 
 ## Configuration
 

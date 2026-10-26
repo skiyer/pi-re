@@ -37,17 +37,27 @@ JSON
     fi
 }
 
+start_pi() {
+    prep
+    if [ ! -d "$IDADIR" ]; then
+        echo "pi-re: no toolchain mounted at $IDADIR — mount it read-only with fstype=erofs" >&2
+    fi
+    exec pi "$@"
+}
+
 case "${1:-}" in
-    pi)
-        shift
-        prep
-        if [ ! -d "$IDADIR" ]; then
-            echo "pi-re: no toolchain mounted at $IDADIR — mount it read-only with fstype=erofs" >&2
-        fi
-        exec pi "$@"
-        ;;
-    *)
+    stdio|http|dashboard|logs|hook)
         prep
         exec /opt/mcp/venv/bin/ida-mcp "$@"
+        ;;
+    pi)
+        shift
+        start_pi "$@"
+        ;;
+    "")
+        start_pi
+        ;;
+    *)
+        start_pi "$@"
         ;;
 esac
