@@ -13,7 +13,7 @@ first launch.
 ## Run
 
 ```bash
-msb run ghcr.io/skiyer/pi-re:latest --name pi-re -it \
+msb run ghcr.io/skiyer/pi-re:latest --name pi-re -t \
   --mount-disk ~/images/toolchain-arm64.erofs:/opt/toolchain:ro,fstype=erofs \
   --mount-dir  ~/work:/workspace
 ```
@@ -26,6 +26,10 @@ Then just ask:
 
 That is the whole setup. Drop the extra mounts and it still runs — you only lose
 the analysis tools.
+
+> `-t` allocates a pseudo-terminal, which is what an interactive agent needs.
+> There is no `-i` flag: unlike Docker, microsandbox attaches stdin by default.
+> Use `--no-tty` for non-interactive runs and `--no-stdin` to hand the command EOF.
 
 ## Mounts
 
