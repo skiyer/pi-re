@@ -32,7 +32,7 @@ JSON
     # Accept the EULA once. Needs a mounted toolchain.
     if [ -d "$IDADIR" ] && [ ! -f "$IDAUSR/ida.reg" ]; then
         /opt/mcp/venv/bin/python -c \
-          "import idapro, ida_registry; [ida_registry.reg_write_int(f'EULA {v}', 1) for v in (90,91,92,93,94)]" \
+          "import idapro, ida_registry; [ida_registry.reg_write_int(f'EULA {v}', 1) for v in range(90, 100)]" \
           2>/dev/null || true
     fi
 }
