@@ -1,7 +1,10 @@
 #!/bin/sh
-# One entry point for both roles:
-#   entry pi [args...]        -> container entry: prepare env, then run pi
-#   entry stdio [--agent=..]  -> MCP server, spawned by pi itself
+# Single entry point, two roles.
+#
+#   entry            -> interactive pi (default)
+#   entry pi  [args] -> pi, with args forwarded
+#   entry http|stdio|dashboard|logs|hook [args]
+#                    -> the MCP server (a byproduct of this image)
 set -e
 
 : "${IDADIR:=/opt/toolchain}"
@@ -29,7 +32,7 @@ prep() {
 JSON
     fi
 
-    # Accept the EULA once. Needs a mounted toolchain.
+    # Accept the EULA once, for this and future toolchain versions.
     if [ -d "$IDADIR" ] && [ ! -f "$IDAUSR/ida.reg" ]; then
         /opt/mcp/venv/bin/python -c \
           "import idapro, ida_registry; [ida_registry.reg_write_int(f'EULA {v}', 1) for v in range(90, 100)]" \
@@ -37,7 +40,7 @@ JSON
     fi
 }
 
-start_pi() {
+start_agent() {
     prep
     if [ ! -d "$IDADIR" ]; then
         echo "pi-re: no toolchain mounted at $IDADIR — mount it read-only with fstype=erofs" >&2
@@ -52,12 +55,12 @@ case "${1:-}" in
         ;;
     pi)
         shift
-        start_pi "$@"
+        start_agent "$@"
         ;;
     "")
-        start_pi
+        start_agent
         ;;
     *)
-        start_pi "$@"
+        start_agent "$@"
         ;;
 esac

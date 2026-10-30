@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
-# Pi coding agent with the MCP reverse-engineering server built in.
+# Pi with a reverse-engineering MCP server built in.
 #
 # The toolchain is NOT in this image: mount it read-only at /opt/toolchain
-# (e.g. an erofs image) and everything works with no extra configuration.
-FROM ghcr.io/skiyer/pi-docker:latest
+# (an erofs image, for example) and pi can disassemble and decompile right away.
+#
+# The MCP server is a byproduct: the same image also serves other MCP clients
+# over stdio or HTTP — see the README.
+ARG PI_VERSION=latest
+FROM ghcr.io/skiyer/pi-docker:${PI_VERSION}
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
