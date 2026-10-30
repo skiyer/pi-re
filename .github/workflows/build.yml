@@ -8,8 +8,13 @@ on:
     branches: [main]
     paths-ignore: ['**.md', 'LICENSE', '.gitignore']
   schedule:
-    - cron: '0 6 * * 1'          # weekly: pick up new server releases
+    - cron: '0 6 * * *'          # daily: pick up new upstream releases
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Publish even if no component version changed'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -32,7 +37,26 @@ jobs:
           echo "mcp_version=$mcp_version" >> "$GITHUB_OUTPUT"
           echo "pi=$pi_version  server=$mcp_version"
 
+      - name: Detect change
+        id: change
+        run: |
+          set -euo pipefail
+          prev_pi=$(python3 -c "import json;print(json.load(open('.github/versions.json'))['pi'])")
+          prev_srv=$(python3 -c "import json;print(json.load(open('.github/versions.json'))['server'])")
+          pi="${{ steps.in.outputs.pi_version }}"
+          srv="${{ steps.in.outputs.mcp_version }}"
+          echo "previous: pi=$prev_pi server=$prev_srv"
+          echo "resolved: pi=$pi server=$srv"
+          if [ "$pi" = "$prev_pi" ] && [ "$srv" = "$prev_srv" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No component changed; nothing to publish."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Publishing: pi $prev_pi -> $pi, server $prev_srv -> $srv"
+          fi
+
       - name: Resolve version (CalVer)
+        if: steps.change.outputs.changed == 'true'
         id: ver
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,15 +69,19 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "version: $version"
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - if: steps.change.outputs.changed == 'true'
+        uses: docker/setup-qemu-action@v3
+      - if: steps.change.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.change.outputs.changed == 'true'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - if: steps.change.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
         with:
           context: .
           pull: true
@@ -69,7 +97,8 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Write release notes
+      - if: steps.change.outputs.changed == 'true'
+        name: Write release notes
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           PI_VERSION: ${{ steps.in.outputs.pi_version }}
@@ -99,7 +128,8 @@ jobs:
           EOF
           cat notes.md
 
-      - name: Tag and release
+      - if: steps.change.outputs.changed == 'true'
+        name: Tag and release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.ver.outputs.version }}
@@ -120,7 +150,8 @@ jobs:
             gh release create "$VERSION" --title "$VERSION" --notes-file notes.md
           fi
 
-      - name: Summarize
+      - if: steps.change.outputs.changed == 'true'
+        name: Summarize
         run: |
           {
             echo "### pi-re ${{ steps.ver.outputs.version }}"
@@ -130,3 +161,20 @@ jobs:
             echo "| pi | ${{ steps.in.outputs.pi_version }} |"
             echo "| re-mcp | ${{ steps.in.outputs.mcp_version }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record published versions
+        if: steps.change.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path(".github/versions.json")
+          d = json.loads(p.read_text())
+          d["pi"] = "${{ steps.in.outputs.pi_version }}"
+          d["server"] = "${{ steps.in.outputs.mcp_version }}"
+          d["image"] = "${{ steps.ver.outputs.version }}"
+          p.write_text(json.dumps(d, indent=2) + "\n")
+          PY
+          git add .github/versions.json
+          git diff --cached --quiet || git commit -m "Record published versions ${{ steps.ver.outputs.version }}"
+          git push
