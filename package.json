@@ -1,0 +1,9 @@
+{
+  "name": "pi-re",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pi with a reverse-engineering MCP server built in. The dependency version below is the single source of truth for the pi version baked into the image.",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0"
+  }
+}

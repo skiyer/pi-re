@@ -145,6 +145,22 @@ download the new image file and mount it instead. See
 [`re-toolchain-images`](https://github.com/skiyer/re-toolchain-images) for how
 those are built.
 
+## How upgrades arrive
+
+The two upstream versions are pinned in plain files, which Dependabot watches:
+
+| File | Pin |
+|---|---|
+| `package.json` | `@earendil-works/pi-coding-agent` |
+| `requirements.txt` | `ida-mcp==<version>` |
+
+Dependabot opens a PR when either moves; the PR is validated (both pins resolve,
+the base image exists, the image builds and starts) and merged automatically.
+The merge triggers the build, which publishes a new CalVer tag and a release
+recording the component versions.
+
+Nothing is rebuilt when no pin changed.
+
 ## Build locally
 
 ```bash

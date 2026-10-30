@@ -1,0 +1,2 @@
+# Single source of truth for the MCP server version baked into the image.
+ida-mcp==20261028.0.3

@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # The agent itself.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: scope
+    labels:
+      - dependencies
+      - automerge
+
+  # The MCP server baked into the image.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: scope
+    labels:
+      - dependencies
+      - automerge

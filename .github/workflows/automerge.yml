@@ -1,0 +1,69 @@
+name: Auto-merge dependency PRs
+
+# Dependabot finds a new upstream version, opens a PR, this workflow validates it
+# and merges. The merge is performed by GitHub, so the resulting push to main
+# triggers the build workflow as usual.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate the bumped version
+    if: >-
+      github.actor == 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'automerge')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Both pins must resolve
+        run: |
+          set -euo pipefail
+          pi_v=$(jq -r '.dependencies["@earendil-works/pi-coding-agent"]' package.json | tr -d '^~')
+          srv_v=$(grep -E '^ida-mcp==' requirements.txt | sed 's/^ida-mcp==//')
+          echo "pi=$pi_v  server=$srv_v"
+          npm view "@earendil-works/pi-coding-agent@$pi_v" version
+          curl -fsSL "https://pypi.org/pypi/ida-mcp/$srv_v/json" >/dev/null
+          # The base image must already exist for that pi version.
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker manifest inspect "ghcr.io/skiyer/pi-docker:$pi_v" >/dev/null \
+            || { echo "::error::ghcr.io/skiyer/pi-docker:$pi_v is not published yet"; exit 1; }
+
+      - name: Image builds and starts
+        run: |
+          set -euo pipefail
+          pi_v=$(jq -r '.dependencies["@earendil-works/pi-coding-agent"]' package.json | tr -d '^~')
+          srv_v=$(grep -E '^ida-mcp==' requirements.txt | sed 's/^ida-mcp==//')
+          docker build \
+            --build-arg "PI_VERSION=$pi_v" \
+            --build-arg "MCP_VERSION=$srv_v" \
+            --build-arg "BUILD_VERSION=pr-validate" \
+            -t pi-re:pr-validate .
+          docker run --rm --entrypoint sh pi-re:pr-validate -c 'pi --version && cat /opt/mcp/VERSIONS.mcp'
+
+  merge:
+    name: Merge
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Squash merge (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          state="$(gh pr view "$PR" --json state --jq .state)"
+          if [ "$state" = "MERGED" ]; then echo "already merged"; exit 0; fi
+          gh pr merge "$PR" --squash --delete-branch
