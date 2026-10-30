@@ -1,7 +1,8 @@
 version: 2
 updates:
-  # The agent itself.
-  - package-ecosystem: npm
+  # The agent itself. Dependabot only offers a version that
+  # skiyer/pi-docker has already published, so the two images stay in step.
+  - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: daily

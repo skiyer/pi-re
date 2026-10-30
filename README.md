@@ -149,15 +149,21 @@ those are built.
 
 The two upstream versions are pinned in plain files, which Dependabot watches:
 
-| File | Pin |
-|---|---|
-| `package.json` | `@earendil-works/pi-coding-agent` |
-| `requirements.txt` | `ida-mcp==<version>` |
+| File | Pin | Ecosystem |
+|---|---|---|
+| `Dockerfile` | `FROM ghcr.io/skiyer/pi-docker:<version>` | docker |
+| `requirements.txt` | `ida-mcp==<version>` | pip |
 
-Dependabot opens a PR when either moves; the PR is validated (both pins resolve,
-the base image exists, the image builds and starts) and merged automatically.
-The merge triggers the build, which publishes a new CalVer tag and a release
-recording the component versions.
+Dependabot opens a PR when either moves; the PR is validated (the base image is
+already published, the server version exists, the image builds and starts) and
+merged automatically. The merge triggers the build, which publishes a new CalVer
+tag and a release recording the component versions.
+
+The agent version is **not** resolved from npm here. It comes from the
+`pi-docker` image tag, so this repository can never run ahead of
+[`pi-docker`](https://github.com/skiyer/pi-docker): a PR bumping the base image
+fails validation until that tag exists. Both repositories upgrade the same way —
+a Dependabot PR that is merged once upstream has published.
 
 Nothing is rebuilt when no pin changed.
 

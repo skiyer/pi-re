@@ -3,15 +3,15 @@ name: build
 # Every run publishes an image tagged with the build date (CalVer) and creates a
 # matching git tag + GitHub release that records the component versions inside.
 #
-# Upstream upgrades arrive as Dependabot PRs that edit package.json (pi) and
-# requirements.txt (server); merging one triggers this workflow.
+# Upstream upgrades arrive as Dependabot PRs: the pi version is the base image
+# tag in the Dockerfile (docker ecosystem), the server version is requirements.txt
+# (pip ecosystem). Merging one triggers this workflow.
 on:
   push:
     branches: [main]
     paths:
       - Dockerfile
       - entry.sh
-      - package.json
       - requirements.txt
       - .github/workflows/build.yml
   workflow_dispatch:
@@ -34,11 +34,20 @@ jobs:
         id: in
         run: |
           set -euo pipefail
-          pi_version=$(jq -r '.dependencies["@earendil-works/pi-coding-agent"]' package.json | tr -d '^~')
+          base_ref=$(grep -m1 '^FROM ghcr.io/skiyer/pi-docker:' Dockerfile | sed 's/^FROM //')
+          pi_version=${base_ref##*:}
           mcp_version=$(grep -E '^ida-mcp==' requirements.txt | sed 's/^ida-mcp==//')
+          echo "base_ref=$base_ref"       >> "$GITHUB_OUTPUT"
           echo "pi_version=$pi_version"   >> "$GITHUB_OUTPUT"
           echo "mcp_version=$mcp_version" >> "$GITHUB_OUTPUT"
-          echo "pi=$pi_version  server=$mcp_version"
+          echo "base=$base_ref  server=$mcp_version"
+
+      - name: Base image must be published
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker manifest inspect "${{ steps.in.outputs.base_ref }}" >/dev/null \
+            || { echo "::error::${{ steps.in.outputs.base_ref }} is not published yet"; exit 1; }
 
       - name: Resolve version (CalVer)
         id: ver
@@ -71,7 +80,6 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository }}:latest
           build-args: |
-            PI_VERSION=${{ steps.in.outputs.pi_version }}
             MCP_VERSION=${{ steps.in.outputs.mcp_version }}
             BUILD_VERSION=${{ steps.ver.outputs.version }}
           labels: |

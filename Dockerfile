@@ -9,12 +9,12 @@
 #
 # Versioning: the image tag is a build date (CalVer); what is inside is recorded
 # in labels and in /opt/mcp/VERSIONS.
-ARG PI_VERSION=latest
+#
+# The pi version comes from this base image tag, which Dependabot bumps (docker
+# ecosystem) only once skiyer/pi-docker has published it. That keeps the two
+# repositories in step: pi-re can never run ahead of pi-docker.
+FROM ghcr.io/skiyer/pi-docker:1.4.0
 
-FROM ghcr.io/skiyer/pi-docker:${PI_VERSION}
-
-# Re-declared after FROM so they are usable below.
-ARG PI_VERSION=latest
 ARG MCP_VERSION=latest
 
 RUN apt-get update \
@@ -27,6 +27,7 @@ RUN apt-get update \
        uv pip install --python /opt/mcp/venv/bin/python --no-cache "ida-mcp==${MCP_VERSION}" \
     && rm -rf /root/.cache \
     && pi --version > /opt/mcp/VERSIONS.pi \
+    && printf 'ghcr.io/skiyer/pi-docker:1.4.0\n' > /opt/mcp/VERSIONS.base \
     && /opt/mcp/venv/bin/python -c "import importlib.metadata as m; print(m.version('ida-mcp'))" > /opt/mcp/VERSIONS.mcp
 
 COPY entry.sh /opt/mcp/entry

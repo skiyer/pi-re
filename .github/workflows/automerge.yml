@@ -31,27 +31,25 @@ jobs:
       - name: Both pins must resolve
         run: |
           set -euo pipefail
-          pi_v=$(jq -r '.dependencies["@earendil-works/pi-coding-agent"]' package.json | tr -d '^~')
+          base_ref=$(grep -m1 '^FROM ghcr.io/skiyer/pi-docker:' Dockerfile | sed 's/^FROM //')
+          pi_v=${base_ref##*:}
           srv_v=$(grep -E '^ida-mcp==' requirements.txt | sed 's/^ida-mcp==//')
-          echo "pi=$pi_v  server=$srv_v"
-          npm view "@earendil-works/pi-coding-agent@$pi_v" version
+          echo "base=$base_ref  server=$srv_v"
           curl -fsSL "https://pypi.org/pypi/ida-mcp/$srv_v/json" >/dev/null
           # The base image must already exist for that pi version.
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker manifest inspect "ghcr.io/skiyer/pi-docker:$pi_v" >/dev/null \
-            || { echo "::error::ghcr.io/skiyer/pi-docker:$pi_v is not published yet"; exit 1; }
+          docker manifest inspect "$base_ref" >/dev/null \
+            || { echo "::error::$base_ref is not published yet; wait for skiyer/pi-docker"; exit 1; }
 
       - name: Image builds and starts
         run: |
           set -euo pipefail
-          pi_v=$(jq -r '.dependencies["@earendil-works/pi-coding-agent"]' package.json | tr -d '^~')
           srv_v=$(grep -E '^ida-mcp==' requirements.txt | sed 's/^ida-mcp==//')
           docker build \
-            --build-arg "PI_VERSION=$pi_v" \
             --build-arg "MCP_VERSION=$srv_v" \
             --build-arg "BUILD_VERSION=pr-validate" \
             -t pi-re:pr-validate .
-          docker run --rm --entrypoint sh pi-re:pr-validate -c 'pi --version && cat /opt/mcp/VERSIONS.mcp'
+          docker run --rm --entrypoint sh pi-re:pr-validate -c 'pi --version && cat /opt/mcp/VERSIONS.base && cat /opt/mcp/VERSIONS.mcp'
 
   merge:
     name: Merge
