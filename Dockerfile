@@ -34,7 +34,7 @@ RUN chmod +x /opt/mcp/entry
 
 ARG BUILD_VERSION=dev
 RUN printf '%s\n' "${BUILD_VERSION}" > /opt/mcp/VERSIONS \
-    && printf 'pi %s\nida-mcp %s\n' "$(cat /opt/mcp/VERSIONS.pi)" "$(cat /opt/mcp/VERSIONS.mcp)"
+    && printf 'pi %s\nre-mcp %s\n' "$(cat /opt/mcp/VERSIONS.pi)" "$(cat /opt/mcp/VERSIONS.mcp)"
 
 LABEL org.opencontainers.image.title="pi-re" \
       org.opencontainers.image.description="Pi coding agent with a reverse-engineering MCP server built in" \

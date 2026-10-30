@@ -91,7 +91,7 @@ built-in one is not written.
 | | |
 |---|---|
 | agent | `pi` (from [`pi-docker`](https://github.com/skiyer/pi-docker)) |
-| MCP server | `ida-mcp` in a relocatable venv at `/opt/mcp` |
+| MCP server (`re-mcp`) | in a relocatable venv at `/opt/mcp` |
 | python | uv-managed CPython 3.12, no system dependency |
 | default `mcp.json` | written on first start at `/root/.pi/agent/mcp.json` |
 
@@ -127,7 +127,7 @@ docker run --rm --entrypoint cat ghcr.io/skiyer/pi-re:2026.10.30 /opt/mcp/VERSIO
 | `io.skiyer.toolchain.min` | `9.4` |
 
 The build pins both inputs, so a tag is reproducible: the base is
-`pi-docker:<pi version>` and the server is `ida-mcp==<mcp version>`.
+`pi-docker:<pi version>` and the server package is pinned to `<mcp version>`.
 
 **The toolchain is versioned independently and is orthogonal to the image:**
 
