@@ -6,7 +6,65 @@ Mount a toolchain image and it works — no configuration, no second container.
 > The toolchain itself is **not** in this image. Mount it read-only at
 > `/opt/toolchain` and pi can disassemble and decompile immediately.
 
-## Run
+## Quick start
+
+Drop a toolchain image into a project directory and run the launcher:
+
+```bash
+cd ~/work/my-target
+cp ~/images/toolchain-arm64.erofs .
+./pi-re.py
+```
+
+`pi-re.py` finds the toolchain image in the working directory, mounts it read-only
+at `/opt/toolchain`, mounts the directory at `/workspace`, and starts pi. Run it
+again and it attaches to the existing sandbox instead of creating another one.
+
+Then just ask:
+
+```
+反编译 /workspace/sample.bin，说明它做什么
+```
+
+## Launcher options
+
+```bash
+./pi-re.py                          # interactive pi
+./pi-re.py -p "reverse sample.bin"  # args go to pi
+./pi-re.py --shell                  # a shell instead of pi
+./pi-re.py --status                 # show what would be mounted/used
+./pi-re.py --recreate               # throw the sandbox away and start fresh
+./pi-re.py --toolchain ~/other.erofs
+./pi-re.py --workspace ~/other-dir
+./pi-re.py --name my-target         # one sandbox per project
+```
+
+### Network access
+
+Off by default? No — pi needs to reach your model provider, so the default is
+`--net public`. Restrict it when you analyse something sensitive and drive the
+model elsewhere:
+
+```bash
+./pi-re.py --net private            # private networks only
+./pi-re.py --net host               # host network
+./pi-re.py --offline                # no network at all (== --net none)
+```
+
+Network policy is fixed when the sandbox is created. Changing it requires
+`--recreate`; the launcher prints the policy it used.
+
+### Multiple projects
+
+By default the sandbox is named `pi-re` and reused. Give each project its own:
+
+```bash
+./pi-re.py --name proj-a
+```
+
+## Without the launcher
+
+The image works with plain `msb`:
 
 ```bash
 msb run ghcr.io/skiyer/pi-re:latest --name pi-re -t \
@@ -15,17 +73,8 @@ msb run ghcr.io/skiyer/pi-re:latest --name pi-re -t \
   -- pi
 ```
 
-Then just ask:
-
-```
-反编译 /workspace/sample.bin，说明它做什么
-```
-
-`-- pi` (or no arguments at all) starts an interactive session; anything after
-`pi` is forwarded to it, for example `-- pi -p "reverse /workspace/sample.bin"`.
-
-`-t` allocates a pseudo-terminal. There is no `-i`: unlike Docker, microsandbox
-attaches stdin by default. Use `--no-tty` for non-interactive runs.
+`-t` allocates a pseudo-terminal; there is no `-i` (unlike Docker, microsandbox
+attaches stdin by default). Use `--no-tty` for non-interactive runs.
 
 ## Mounts
 
@@ -38,7 +87,7 @@ attaches stdin by default. Use `--no-tty` for non-interactive runs.
 
 ## The MCP server is a byproduct
 
-The same image serves any MCP client. Two extra roles:
+The same image serves any MCP client:
 
 ```bash
 # stdio, for a client that spawns it
@@ -58,8 +107,6 @@ session; run a single instance and let agents connect to it rather than starting
 one per agent. The HTTP transport has **no authentication** — keep it on loopback
 or reach it through an SSH tunnel.
 
-Point another client at it, for example:
-
 ```bash
 pi mcp add re --url http://127.0.0.1:8737/mcp --exposure codemode
 ```
@@ -67,8 +114,7 @@ pi mcp add re --url http://127.0.0.1:8737/mcp --exposure codemode
 ## Use your own pi config
 
 Mount your models, credentials and settings so the container uses the same
-providers as your host. Mount the individual files, so the image's own MCP
-config stays in charge:
+providers as your host. The launcher does this automatically, file by file:
 
 ```bash
   --mount-file ~/.pi/agent/auth.json:/root/.pi/agent/auth.json:ro \
@@ -98,53 +144,6 @@ built-in one is not written.
 `entry.sh` is the only entry point: with no arguments (or `pi`) it prepares the
 environment and runs pi; with `stdio`/`http`/… it runs the MCP server instead.
 
-## Versioning
-
-Releases are automatic — there is no manual version decision.
-
-**The image tag is a build date (CalVer).** Each run derives the next tag from
-the calendar, so a rebuild never overwrites a version you already pinned:
-
-```
-2026.10.30        first build that day
-2026.10.30.1      a later build that day
-latest            most recent build
-```
-
-**What is inside is recorded, not encoded in the tag.** Every image carries
-labels and a `VERSIONS` file:
-
-```bash
-docker inspect ghcr.io/skiyer/pi-re:2026.10.30 --format '{{json .Config.Labels}}'
-docker run --rm --entrypoint cat ghcr.io/skiyer/pi-re:2026.10.30 /opt/mcp/VERSIONS.pi
-```
-
-| Label | Example |
-|---|---|
-| `org.opencontainers.image.version` | `2026.10.30` |
-| `io.skiyer.pi.version` | `1.4.0` |
-| `io.skiyer.mcp.version` | `20261028.0.3` |
-| `io.skiyer.toolchain.min` | `9.4` |
-
-The build pins both inputs, so a tag is reproducible: the base is
-`pi-docker:<pi version>` and the server package is pinned to `<mcp version>`.
-
-**The toolchain is versioned independently and is orthogonal to the image:**
-
-| Artifact | Version | Meaning |
-|---|---|---|
-| `pi-re:<calver>` | build date | this image (pi + MCP runtime) |
-| `toolchain-*` | release tag, e.g. `toolchain-v2` | which toolchain ships inside |
-
-```
-pi-re:<anything>   works with any toolchain-vN whose architecture matches
-```
-
-so upgrading the toolchain never requires rebuilding or re-pulling the image:
-download the new image file and mount it instead. See
-[`re-toolchain-images`](https://github.com/skiyer/re-toolchain-images) for how
-those are built.
-
 ## How upgrades arrive
 
 The two upstream versions are pinned in plain files, which Dependabot watches:
@@ -165,7 +164,52 @@ The agent version is **not** resolved from npm here. It comes from the
 fails validation until that tag exists. Both repositories upgrade the same way —
 a Dependabot PR that is merged once upstream has published.
 
-Nothing is rebuilt when no pin changed.
+## Versioning
+
+Releases are automatic — there is no manual version decision.
+
+**The image tag is a build date (CalVer).** Each run derives the next tag from
+the calendar, so a rebuild never overwrites a version you already pinned:
+
+```
+2026.10.30        first build that day
+2026.10.30.1      a later build that day
+latest            most recent build
+```
+
+**What is inside is recorded, not encoded in the tag.** Every image carries
+labels and `VERSIONS*` files:
+
+```bash
+docker inspect ghcr.io/skiyer/pi-re:2026.10.30 --format '{{json .Config.Labels}}'
+docker run --rm --entrypoint cat ghcr.io/skiyer/pi-re:2026.10.30 /opt/mcp/VERSIONS.base
+```
+
+| Label | Example |
+|---|---|
+| `org.opencontainers.image.version` | `2026.10.30` |
+| `io.skiyer.pi.version` | `1.4.0` |
+| `io.skiyer.mcp.version` | `20261028.0.3` |
+| `io.skiyer.toolchain.min` | `9.4` |
+
+Every build also creates a matching git tag and GitHub release whose notes list
+the component versions of that build.
+
+**The toolchain is versioned independently and is orthogonal to the image:**
+
+| Artifact | Version | Meaning |
+|---|---|---|
+| `pi-re:<calver>` | build date | this image (pi + MCP runtime) |
+| `toolchain-*` | release tag, e.g. `toolchain-v2` | which toolchain ships inside |
+
+```
+pi-re:<anything>   works with any toolchain-vN whose architecture matches
+```
+
+so upgrading the toolchain never requires rebuilding or re-pulling the image:
+download the new image file and mount it instead. See
+[`re-toolchain-images`](https://github.com/skiyer/re-toolchain-images) for how
+those are built.
 
 ## Build locally
 
@@ -174,11 +218,10 @@ docker build --pull -t pi-re:local .
 docker run --rm pi-re:local --version
 ```
 
-`--pull` matters: the base is `pi-docker:latest`, and a stale local copy of that
-tag will silently bake an old pi into this image.
+`--pull` matters: the base is a pinned `pi-docker` tag, and a stale local copy of
+it will silently bake an old pi into this image.
 
-CI builds `linux/amd64` and `linux/arm64` on push, on tags, weekly (to pick up new
-MCP server releases), and on demand.
+CI builds `linux/amd64` and `linux/arm64` whenever a pin changes, and on demand.
 
 ## License
 
