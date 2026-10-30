@@ -1,39 +1,36 @@
 name: build
 
-# Automatic publication: every run resolves its inputs, derives a CalVer tag and
-# publishes. No manual version decision.
+# Automatic publication: every run resolves its inputs, derives a CalVer tag,
+# publishes the image, and creates a matching git tag + GitHub release whose
+# notes record the component versions inside that image.
 on:
   push:
     branches: [main]
     paths-ignore: ['**.md', 'LICENSE', '.gitignore']
   schedule:
-    - cron: '0 6 * * 1'          # weekly: pick up new MCP server releases
+    - cron: '0 6 * * 1'          # weekly: pick up new server releases
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write     # create the git tag and release
+      contents: write            # create the git tag and release
       packages: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Resolve inputs
         id: in
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # pi: read the version out of the published base image, then pin to it.
           docker pull -q ghcr.io/skiyer/pi-docker:latest
           pi_version=$(docker run --rm ghcr.io/skiyer/pi-docker:latest --version | tr -d '[:space:]')
-          # mcp: newest release on PyPI; the image installs exactly this version.
           mcp_version=$(curl -fsSL https://pypi.org/pypi/ida-mcp/json \
                         | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])')
           echo "pi_version=$pi_version"   >> "$GITHUB_OUTPUT"
           echo "mcp_version=$mcp_version" >> "$GITHUB_OUTPUT"
-          echo "pi=$pi_version  mcp=$mcp_version"
+          echo "pi=$pi_version  server=$mcp_version"
 
       - name: Resolve version (CalVer)
         id: ver
@@ -42,7 +39,6 @@ jobs:
         run: |
           set -euo pipefail
           base=$(date -u +%Y.%m.%d)
-          # Append a build counter so every run gets a unique, sortable tag.
           taken=$(gh api --paginate "/user/packages/container/pi-re/versions" \
                   --jq '.[].metadata.container.tags[]' 2>/dev/null | grep -c "^${base}" || true)
           if [ "$taken" = "0" ]; then version="$base"; else version="${base}.${taken}"; fi
@@ -73,44 +69,64 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Tag and release
+      - name: Write release notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.ver.outputs.version }}
           PI_VERSION: ${{ steps.in.outputs.pi_version }}
           MCP_VERSION: ${{ steps.in.outputs.mcp_version }}
         run: |
           set -euo pipefail
+          cat > notes.md <<EOF
+          ## Components
+
+          | Component | Version |
+          |---|---|
+          | pi-re | \`${VERSION}\` |
+          | pi | \`${PI_VERSION}\` |
+          | re-mcp (MCP server) | \`${MCP_VERSION}\` |
+          | platforms | \`linux/amd64\`, \`linux/arm64\` |
+          | toolchain | any \`toolchain-vN\` with a matching architecture (>= 9.4) |
+          | commit | \`${GITHUB_SHA:0:7}\` |
+
+          ## Use
+
+          \`\`\`bash
+          msb run ghcr.io/${GITHUB_REPOSITORY}:${VERSION} --name pi-re -t --mount-disk ~/toolchain-images/toolchain-arm64.erofs:/opt/toolchain:ro,fstype=erofs --mount-dir ~/work:/workspace -- pi
+          \`\`\`
+
+          The toolchain is mounted at run time and is versioned independently, so
+          the same image works with every \`toolchain-vN\` release.
+          EOF
+          cat notes.md
+
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$VERSION" -m "pi-re $VERSION (pi $PI_VERSION, re-mcp $MCP_VERSION)"
-          git push origin "$VERSION"
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --notes "Automatically built image.
-
-| | |
-|---|---|
-| pi | \`$PI_VERSION\` |
-| re-mcp | \`$MCP_VERSION\` |
-| platforms | \`linux/amd64\`, \`linux/arm64\` |
-
-\`\`\`bash
-msb run ghcr.io/${{ github.repository }}:$VERSION --name pi-re -t \\
-  --mount-disk ~/toolchain-images/toolchain-arm64.erofs:/opt/toolchain:ro,fstype=erofs \\
-  --mount-dir  ~/work:/workspace -- pi
-\`\`\`
-
-Works with any \`toolchain-vN\` release whose architecture matches."
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "tag $VERSION already exists; skipping git tag"
+          else
+            git tag -a "$VERSION" -m "pi-re $VERSION"
+            git push origin "$VERSION"
+          fi
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists; updating notes"
+            gh release edit "$VERSION" --notes-file notes.md
+          else
+            gh release create "$VERSION" --title "$VERSION" --notes-file notes.md
+          fi
 
       - name: Summarize
         run: |
           {
             echo "### pi-re ${{ steps.ver.outputs.version }}"
             echo ""
-            echo "| | |"
+            echo "| Component | Version |"
             echo "|---|---|"
             echo "| pi | ${{ steps.in.outputs.pi_version }} |"
             echo "| re-mcp | ${{ steps.in.outputs.mcp_version }} |"
-            echo "| platforms | linux/amd64, linux/arm64 |"
           } >> "$GITHUB_STEP_SUMMARY"
