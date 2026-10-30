@@ -1,12 +1,13 @@
 name: build
 
+# Automatic publication: every run resolves its inputs, derives a CalVer tag and
+# publishes. No manual version decision.
 on:
   push:
     branches: [main]
-    tags: ['v*']
     paths-ignore: ['**.md', 'LICENSE', '.gitignore']
   schedule:
-    - cron: '0 6 * * 1'          # weekly: pick up new ida-mcp releases
+    - cron: '0 6 * * 1'          # weekly: pick up new MCP server releases
   workflow_dispatch:
 
 jobs:
@@ -17,6 +18,37 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve inputs
+        id: in
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # pi: read the version out of the published base image, then pin to it.
+          docker pull -q ghcr.io/skiyer/pi-docker:latest
+          pi_version=$(docker run --rm ghcr.io/skiyer/pi-docker:latest --version | tr -d '[:space:]')
+          # mcp: newest release on PyPI; the image installs exactly this version.
+          mcp_version=$(curl -fsSL https://pypi.org/pypi/ida-mcp/json \
+                        | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])')
+          echo "pi_version=$pi_version"   >> "$GITHUB_OUTPUT"
+          echo "mcp_version=$mcp_version" >> "$GITHUB_OUTPUT"
+          echo "pi=$pi_version  mcp=$mcp_version"
+
+      - name: Resolve version (CalVer)
+        id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          base=$(date -u +%Y.%m.%d)
+          # Append a build counter so every run gets a unique, sortable tag.
+          taken=$(gh api --paginate "/user/packages/container/pi-re/versions" \
+                  --jq '.[].metadata.container.tags[]' 2>/dev/null | grep -c "^${base}" || true)
+          if [ "$taken" = "0" ]; then version="$base"; else version="${base}.${taken}"; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "version: $version"
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -24,19 +56,31 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
-            type=schedule,pattern=weekly
-            type=sha,format=short
+
       - uses: docker/build-push-action@v6
         with:
           context: .
+          pull: true
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          build-args: |
+            PI_VERSION=${{ steps.in.outputs.pi_version }}
+            MCP_VERSION=${{ steps.in.outputs.mcp_version }}
+            BUILD_VERSION=${{ steps.ver.outputs.version }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Summarize
+        run: |
+          {
+            echo "### pi-re ${{ steps.ver.outputs.version }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| pi | ${{ steps.in.outputs.pi_version }} |"
+            echo "| ida-mcp | ${{ steps.in.outputs.mcp_version }} |"
+            echo "| platforms | linux/amd64, linux/arm64 |"
+          } >> "$GITHUB_STEP_SUMMARY"

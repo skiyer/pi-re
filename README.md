@@ -100,12 +100,40 @@ environment and runs pi; with `stdio`/`http`/… it runs the MCP server instead.
 
 ## Versioning
 
-One repository, one image, one tag. The toolchain is versioned independently and
-is **orthogonal** to the image:
+Releases are automatic — there is no manual version decision.
+
+**The image tag is a build date (CalVer).** Each run derives the next tag from
+the calendar, so a rebuild never overwrites a version you already pinned:
+
+```
+2026.10.30        first build that day
+2026.10.30.1      a later build that day
+latest            most recent build
+```
+
+**What is inside is recorded, not encoded in the tag.** Every image carries
+labels and a `VERSIONS` file:
+
+```bash
+docker inspect ghcr.io/skiyer/pi-re:2026.10.30 --format '{{json .Config.Labels}}'
+docker run --rm --entrypoint cat ghcr.io/skiyer/pi-re:2026.10.30 /opt/mcp/VERSIONS.pi
+```
+
+| Label | Example |
+|---|---|
+| `org.opencontainers.image.version` | `2026.10.30` |
+| `io.skiyer.pi.version` | `1.4.0` |
+| `io.skiyer.mcp.version` | `20261028.0.3` |
+| `io.skiyer.toolchain.min` | `9.4` |
+
+The build pins both inputs, so a tag is reproducible: the base is
+`pi-docker:<pi version>` and the server is `ida-mcp==<mcp version>`.
+
+**The toolchain is versioned independently and is orthogonal to the image:**
 
 | Artifact | Version | Meaning |
 |---|---|---|
-| `pi-re` | git tag → image tag | this image (pi + MCP runtime) |
+| `pi-re:<calver>` | build date | this image (pi + MCP runtime) |
 | `toolchain-*` | release tag, e.g. `toolchain-v2` | which toolchain ships inside |
 
 ```
