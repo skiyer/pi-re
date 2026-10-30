@@ -76,7 +76,21 @@ Network policy is fixed when the sandbox is created. Changing it requires
 
 ### Multiple projects
 
-By default the sandbox is named `pi-re` and reused. Give each project its own:
+The sandbox name is derived from the workspace path:
+
+```
+pi-re-<directory>-<hash of the full path>
+```
+
+so two directories that happen to share a name still get separate sandboxes, and
+the same project always reuses its own:
+
+```bash
+cd ~/work/proj-a && ./pi-re.py     # pi-re-proj-a-1a2b3c
+cd ~/work/proj-b && ./pi-re.py     # pi-re-proj-b-4d5e6f
+```
+
+Override it with `--name` when you want a fixed, readable name:
 
 ```bash
 ./pi-re.py --name proj-a

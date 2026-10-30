@@ -17,15 +17,16 @@ start a stopped one) instead of creating a duplicate.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 DEFAULT_IMAGE = "ghcr.io/skiyer/pi-re:latest"
-DEFAULT_NAME = "pi-re"
 # Sized for analysis work: IDA auto-analysis is CPU bound and the worker keeps
 # a database in memory. The max values allow growing the sandbox in place.
 DEFAULT_CPUS = 4
@@ -41,6 +42,18 @@ FS_BY_SUFFIX = {".erofs": "erofs", ".sqfs": "erofs", ".ext4": "ext4"}
 def die(message: str, code: int = 1) -> "NoReturn":  # noqa: F821
     print(f"pi-re: {message}", file=sys.stderr)
     raise SystemExit(code)
+
+
+def sandbox_name(workspace: Path) -> str:
+    """Derive a stable sandbox name from the project path.
+
+    The directory gives it a readable part; a short hash of the full path keeps
+    two directories with the same name apart. Stable across runs, so the same
+    project always reuses its own sandbox.
+    """
+    stem = re.sub(r"[^a-z0-9_.-]+", "-", workspace.name.lower()).strip("-.") or "project"
+    digest = hashlib.sha1(str(workspace).encode()).hexdigest()[:6]
+    return f"pi-re-{stem[:40]}-{digest}"
 
 
 def host_arch() -> str:
@@ -192,7 +205,7 @@ def main() -> int:
     )
     parser.add_argument("--toolchain", help="toolchain image (default: found in the working directory)")
     parser.add_argument("--workspace", help="directory to mount at /workspace (default: current directory)")
-    parser.add_argument("--name", default=DEFAULT_NAME, help=f"sandbox name (default: {DEFAULT_NAME})")
+    parser.add_argument("--name", help="sandbox name (default: derived from the workspace path)")
     parser.add_argument("--image", default=DEFAULT_IMAGE, help=f"image (default: {DEFAULT_IMAGE})")
     parser.add_argument("--shell", action="store_true", help="open a shell instead of pi")
     parser.add_argument("--recreate", action="store_true", help="remove and recreate the sandbox")
@@ -224,6 +237,8 @@ def main() -> int:
 
     arch = host_arch()
     toolchain = find_toolchain(workspace, args.toolchain, arch)
+    if not args.name:
+        args.name = sandbox_name(workspace)
 
     if args.status:
         state = sandbox_state(args.name)
