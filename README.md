@@ -39,6 +39,26 @@ Then just ask:
 ./pi-re.py --name my-target         # one sandbox per project
 ```
 
+### Resources
+
+The launcher sizes the sandbox for analysis work, not for a demo:
+
+| | default | hotplug ceiling |
+|---|---|---|
+| CPUs | `4` | `8` |
+| memory | `4G` | `8G` |
+
+Override per run:
+
+```bash
+./pi-re.py --cpus 8 --memory 8G
+./pi-re.py --cpus 2 --memory 2G --max-memory 4G
+```
+
+Resource settings are fixed when the sandbox is created; changing them requires
+`--recreate` (or `msb modify` on a running sandbox). `--status` shows what the
+next creation would use.
+
 ### Network access
 
 Off by default? No — pi needs to reach your model provider, so the default is

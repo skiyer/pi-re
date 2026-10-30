@@ -26,6 +26,12 @@ from pathlib import Path
 
 DEFAULT_IMAGE = "ghcr.io/skiyer/pi-re:latest"
 DEFAULT_NAME = "pi-re"
+# Sized for analysis work: IDA auto-analysis is CPU bound and the worker keeps
+# a database in memory. The max values allow growing the sandbox in place.
+DEFAULT_CPUS = 4
+DEFAULT_MEMORY = "4G"
+DEFAULT_MAX_CPUS = 8
+DEFAULT_MAX_MEMORY = "8G"
 TOOLCHAIN_DIR = "/opt/toolchain"
 WORKSPACE_DIR = "/workspace"
 # Extensions we know how to mount, with the fstype the runtime needs.
@@ -141,6 +147,12 @@ def create_sandbox(args, toolchain: Path, workspace: Path) -> None:
     ]
     for pair in pi_config_mounts():
         cmd += pair
+    cmd += [
+        "--cpus", str(args.cpus),
+        "--memory", args.memory,
+        "--max-cpus", str(args.max_cpus),
+        "--max-memory", args.max_memory,
+    ]
     net = "none" if args.offline else args.net
     if net == "none":
         cmd.append("--no-net")
@@ -149,7 +161,8 @@ def create_sandbox(args, toolchain: Path, workspace: Path) -> None:
     cmd += ["--", "-c", "sleep infinity"]
     print(f"pi-re: creating sandbox {args.name} "
           f"(toolchain {toolchain.name} -> {TOOLCHAIN_DIR}, "
-          f"{workspace} -> {WORKSPACE_DIR}, net {net})", file=sys.stderr)
+          f"{workspace} -> {WORKSPACE_DIR}, "
+          f"{args.cpus} cpus / {args.memory}, net {net})", file=sys.stderr)
     result = run(cmd)
     if result.returncode != 0:
         die("failed to create the sandbox")
@@ -189,6 +202,14 @@ def main() -> int:
                         help="network access for the sandbox (default: public)")
     parser.add_argument("--offline", action="store_true",
                         help="shortcut for --net none")
+    parser.add_argument("--cpus", type=int, default=DEFAULT_CPUS,
+                        help=f"virtual CPUs (default: {DEFAULT_CPUS})")
+    parser.add_argument("--memory", default=DEFAULT_MEMORY,
+                        help=f"memory (default: {DEFAULT_MEMORY})")
+    parser.add_argument("--max-cpus", type=int, default=DEFAULT_MAX_CPUS,
+                        help=f"hotplug ceiling for CPUs (default: {DEFAULT_MAX_CPUS})")
+    parser.add_argument("--max-memory", default=DEFAULT_MAX_MEMORY,
+                        help=f"hotplug ceiling for memory (default: {DEFAULT_MAX_MEMORY})")
     parser.add_argument("--status", action="store_true", help="report the resolved setup and exit")
     parser.add_argument("pi_args", nargs=argparse.REMAINDER, help="arguments for pi")
     args = parser.parse_args()
@@ -209,6 +230,9 @@ def main() -> int:
         print(f"image     {args.image}")
         print(f"toolchain {toolchain}  ({fstype_for(toolchain)})")
         print(f"workspace {workspace}")
+        print(f"resources {args.cpus} cpus / {args.memory} "
+              f"(max {args.max_cpus} / {args.max_memory})")
+        print(f"network   {'none' if args.offline else args.net}")
         print(f"sandbox   {args.name}: {state or 'absent'}")
         return 0
 
