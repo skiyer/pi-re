@@ -12,13 +12,21 @@ Drop a toolchain image into a project directory and run the launcher:
 
 ```bash
 cd ~/work/my-target
-cp ~/images/toolchain-arm64.erofs .
+cp ~/images/toolchain-9.5-arm64.erofs .
 ./pi-re.py
 ```
 
 `pi-re.py` finds the toolchain image in the working directory, mounts it read-only
 at `/opt/toolchain`, mounts the directory at `/workspace`, and starts pi. Run it
 again and it attaches to the existing sandbox instead of creating another one.
+
+Toolchain files are named `toolchain-<version>-<arch>.erofs`. When several are
+present the newest version for this machine's architecture is used, and the
+choice is printed:
+
+```bash
+pi-re: using toolchain-9.5-arm64.erofs (of toolchain-9.4-arm64.erofs, toolchain-9.5-arm64.erofs)
+```
 
 Then just ask:
 
@@ -34,7 +42,7 @@ Then just ask:
 ./pi-re.py --shell                  # a shell instead of pi
 ./pi-re.py --status                 # show what would be mounted/used
 ./pi-re.py --recreate               # throw the sandbox away and start fresh
-./pi-re.py --toolchain ~/other.erofs
+./pi-re.py --toolchain ~/images/toolchain-9.4-arm64.erofs
 ./pi-re.py --workspace ~/other-dir
 ./pi-re.py --name my-target         # one sandbox per project
 ```

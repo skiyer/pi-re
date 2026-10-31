@@ -37,6 +37,8 @@ TOOLCHAIN_DIR = "/opt/toolchain"
 WORKSPACE_DIR = "/workspace"
 # Extensions we know how to mount, with the fstype the runtime needs.
 FS_BY_SUFFIX = {".erofs": "erofs", ".sqfs": "erofs", ".ext4": "ext4"}
+# toolchain-<version>-<arch>.<ext>, e.g. toolchain-9.5-arm64.erofs
+TOOLCHAIN_NAME_RE = re.compile(r"toolchain-(\d+(?:\.\d+)*)-(arm64|amd64)")
 
 
 def die(message: str, code: int = 1) -> "NoReturn":  # noqa: F821
@@ -65,6 +67,14 @@ def host_arch() -> str:
     return machine
 
 
+def version_key(path: Path) -> tuple[int, ...]:
+    """Sort toolchain images by the version in their name."""
+    match = TOOLCHAIN_NAME_RE.search(path.name)
+    if not match:
+        return ()
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
 def find_toolchain(workdir: Path, explicit: str | None, arch: str) -> Path:
     if explicit:
         path = Path(explicit).expanduser().resolve()
@@ -81,17 +91,22 @@ def find_toolchain(workdir: Path, explicit: str | None, arch: str) -> Path:
             "  or pass --toolchain /path/to/image"
         )
 
-    # Prefer the image built for this machine.
-    for path in candidates:
-        if arch in path.name:
-            return path.resolve()
-    if len(candidates) > 1:
-        names = ", ".join(p.name for p in candidates)
+    # Keep the ones built for this machine.
+    for_arch = [p for p in candidates if arch in p.name] or candidates
+    if len(for_arch) > 1 and not any(version_key(p) for p in for_arch):
+        names = ", ".join(p.name for p in for_arch)
         die(
-            f"several toolchain images and none matches this host ({arch}): {names}\n"
+            f"several toolchain images and none carries a version: {names}\n"
             "  pick one with --toolchain"
         )
-    return candidates[0].resolve()
+
+    # Newest version wins; fall back to name order when no version is present.
+    for_arch.sort(key=lambda p: (version_key(p), p.name))
+    chosen = for_arch[-1]
+    if len(for_arch) > 1:
+        versions = ", ".join(p.name for p in for_arch)
+        print(f"pi-re: using {chosen.name} (of {versions})", file=sys.stderr)
+    return chosen.resolve()
 
 
 def fstype_for(path: Path) -> str:
