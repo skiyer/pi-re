@@ -13,7 +13,7 @@
 # The pi version comes from this base image tag, which Dependabot bumps (docker
 # ecosystem) only once skiyer/pi-docker has published it. That keeps the two
 # repositories in step: pi-re can never run ahead of pi-docker.
-FROM ghcr.io/skiyer/pi-docker:1.4.0
+FROM ghcr.io/skiyer/pi-docker:1.5.0
 
 ARG MCP_VERSION=latest
 
